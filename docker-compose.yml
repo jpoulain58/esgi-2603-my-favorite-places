@@ -1,0 +1,51 @@
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: supersecret
+      POSTGRES_DB: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # health check ensures the database is ready before server starts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: ./server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      PG_HOST: db
+      PG_USER: postgres
+      PG_PASSWORD: supersecret
+      PG_DATABASE: postgres
+      # session secret should be overridden in production
+      SESSION_SECRET: superlongstring
+    depends_on:
+      # wait for database to be healthy before starting
+      db:
+        condition: service_healthy
+
+  client:
+    build:
+      context: ./client
+    restart: unless-stopped
+    ports:
+      # expose static site on host port 5173 (same as dev)
+      - "5173:80"
+    environment:
+      # this env var influences vite proxy when running in development
+      API_PROXY_TARGET: http://server:3000
+    depends_on:
+      - server
+
+volumes:
+  pgdata:
